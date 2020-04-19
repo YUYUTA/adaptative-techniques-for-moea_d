@@ -13,6 +13,7 @@ from Mutation import lf_mutation, poly_mutation, fix_bound, levy
 from Decomposition import tchebycheff
 from PriorityFunctions import fixed_priority_values
 from AdaptiveStrategy import evolve
+from AdaptiveWeightAdjustment import calc_SL,update_EP,kNN_EP,WS_transform,delete_vector,add_vector,init_EP
 
 
 ###################
@@ -60,6 +61,11 @@ alpha_for_param = params['alpha for param']                         # set scalin
 beta_for_param = params['beta for param']                           # set stability factor of levy flight to search parameters
 n_step = params['n_step']                                           # set number of generations to assess a parameter
 
+wag = params['wag']                                             #set the iteration intervals of utilizing the adaptive weight vector adjustment strategy 
+rate_evol = params['rate_evol']                                    #If set this param 0.8,  first 80% generation normal MOEA/D, rest 20% weight adjustment
+rate_update_weight = ['rate_update_weight']               # If set this param 0.05, 5% of weight are updated
+G_max = n_eval/n_pop                                           #max generation 
+
 #################
 # start program #
 #################
@@ -69,10 +75,12 @@ os.makedirs(f'./{output}/history/', exist_ok=True)
 os.makedirs(f'./{output}/history/{args.seed}', exist_ok=True)
 
 W = das_dennis(sld_n_part, n_obj)                                   # generate a set of weight vectors
+W = WS_transform(W)                                                  # vectors are modified to use Tchebycheff efficiently
 B = determine_neighbor(W, T)                                        # determine neighbor
 X = init_pop(n_pop, n_var, xl, xu)                                  # initialize a population
 Y = eval_pop(X, problem)                                            # evaluate fitness
 z = init_ref_point(Y)                                               # determine a reference point
+EP = init_EP(X, Y, n_pop, n_obj)                                           #initialize External population
 
 P = np.random.uniform(betal, betau, n_pop)                          # generate a set of stability parameters
 P_parent = P[:]                                                     # initialize a list to store parameters in parent generations
@@ -112,6 +120,7 @@ while n_fe < n_eval:
             xi_ = fix_bound( lf_mutation(xi, xj, alpha, beta), xl, xu ) # levy flight mutation
             xi_ = fix_bound( poly_mutation(xi_, etam, xl, xu), xl, xu ) # polynomial mutation
             fi_ = problem(xi_)                                          # evaluate offspring
+            EP = update_EP(EP, np.array([fi_,xi_]), n_pop, n_obj)        # update External population
 
             z = update_ref_point(z, fi_)                                # update reference point
 
@@ -132,6 +141,12 @@ while n_fe < n_eval:
                     I[i] += np.abs(tch_ - tchk) / tchk                  # cumulate the indicator
 
                 if nc >= nr: break                                      # break if counter arrive the upper limit
+                    
+    if c_gen>=rate_evol*G_max and c_gen % wag == 0:      # If satisfy this fomula, start AWA
+        nus = int(min(len(EP),rate_update_weight*len(Y)))    #number of update subproblem
+        X,Y,W = delete_vector(X, Y, W, n_obj, nus)                   #delete vector
+        X,Y,W = add_vector(EP, X, Y, W, z, nus)                         #add vector
+        B = determine_neighbor(W, T)                                        # re-compute neighbor
     c_gen += 1
 
     P, P_parent, P_offspring, I, I_parent, I_offspring = \

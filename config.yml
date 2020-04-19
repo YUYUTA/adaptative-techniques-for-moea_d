@@ -16,3 +16,6 @@ etam : 20
 alpha for param : 0.1
 beta for param : 1.0
 n_step : 20
+wag : 120
+rate_evol : 0.8
+rate_update_weight : 0.05
